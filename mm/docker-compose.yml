@@ -1,0 +1,1027 @@
+version: '3'
+
+services:
+
+  api:
+    build: ./services/api
+    environment:
+      - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+      - FLASK_AUTH_TOKEN=${FLASK_AUTH_TOKEN}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    ports:
+      - ${API_PORT}:5000
+    
+    volumes:
+      - ./services/libs:/libs
+      - ./services/postCalculation:/post_calculation
+
+  redis:
+    image: "redis:alpine"
+    hostname: redis
+    volumes:
+      - ./services/redis/data:/data
+
+  mongodb:
+    image: mongo:latest
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+
+    ports:
+      - ${MONGO_PORT}:27017
+    volumes:
+      - .services/mongodb/database:/data/db
+    restart: on-failure
+
+  listing-scraper-scrapy:
+      build:
+        context: ./services/scrapers/autotrader/spiders
+        dockerfile: Dockerfile.listing.scraper
+
+      depends_on:
+        - pulsar
+      
+      environment:
+        - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+        - DATACENTER_PROXY=${DATACENTER_PROXY}
+      
+      stdin_open: true
+
+      volumes:
+        - ./services/libs:/libs
+
+      restart: always
+
+
+  # init-dealer-scraper:
+  #   build:
+  #     context: ./services/scrapers/autotrader
+  #     dockerfile: Dockerfile.initDealerScraper
+
+  #   depends_on:
+  #     - pulsar
+    
+  #   environment:
+  #     - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+  #   stdin_open: true
+  
+  # dealer-listing-validator:
+  #   build:
+  #     context: ./services/scrapers/autotrader
+  #     dockerfile: Dockerfile.dealer.validator
+
+  #   depends_on:
+  #     - pulsar
+    
+  #   environment:
+  #     - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+  #   stdin_open: true
+  
+ 
+  
+
+  ftp-scraper:
+    build:
+      context: ./services/scrapers/ftp-scraper
+      dockerfile: Dockerfile.ftp
+
+    depends_on:
+      - pulsar
+    
+    volumes:
+      - ./services/ftp/files:/files
+      - ./services/ftp/processed-files:/processed-files
+
+    stdin_open: true
+  
+  # dealer-scraper:
+  #   build:
+  #     context: ./services/scrapers/autotrader
+  #     dockerfile: Dockerfile.dealer
+
+  #   depends_on:
+  #     - pulsar
+    
+  #   environment:
+  #     - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+    
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 5
+    
+    # stdin_open: true
+
+  pulsar:
+    build: ./services/pulsar
+    volumes:
+      - ./services/pulsar/pulsardata:/pulsar/data
+    
+    command: "bin/pulsar standalone"
+
+    restart: on-failure
+  
+  # pulsar-dashboard:
+  #   image: apachepulsar/pulsar-manager:v0.2.0
+  #   ports:
+  #     - "9527:9527"
+  #     - "7750:7750"
+  #   depends_on:
+  #     - pulsar
+  #   links:
+  #     - pulsar
+  #   environment:
+  #     SPRING_CONFIGURATION_FILE: /pulsar-manager/pulsar-manager/application.properties
+  
+  # cadvisor:
+  #   image: gcr.io/cadvisor/cadvisor:latest
+  #   container_name: cadvisor
+  #   ports:
+  #   - 8788:8080
+  #   volumes:
+  #   - /:/rootfs:ro
+  #   - /var/run:/var/run:rw
+  #   - /sys:/sys:ro
+  #   - /var/lib/docker/:/var/lib/docker:ro
+  #   depends_on:
+  #   - redis
+
+
+
+  
+  logs:
+    build: ./services/logs
+
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+
+    restart: on-failure
+
+  # db:
+  #   image: mysql:latest
+  #   container_name: db
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+  #     MYSQL_DATABASE: ${MYSQL_DATABASE}
+  #     MYSQL_USER: ${MYSQL_USERNAME}
+  #     MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+  #   ports:
+  #     - "6034:3306"
+  #   volumes:
+  #     - ./services/mysql/data:/var/lib/mysql
+    
+  #   cap_add:
+  #     - SYS_NICE
+
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin:latest
+  #   container_name: pma
+  #   links:
+  #     - db
+  #   environment:
+  #     PMA_HOST: db
+  #     PMA_PORT: 3306
+  #     PMA_ARBITRARY: 0
+  #   restart: always
+  #   ports:
+  #     - 8090:80
+  
+  ftps:
+    image: bfren/ftps
+
+    restart: on-failure
+
+    volumes:
+      - ./services/ftp/files:/files
+      - ./services/ftp/ssl:/ssl
+    
+    ports:
+      - "${FTPS_PORT}:21"
+      - "5026:990"
+      - "18700-18710:18700-18710"
+    
+    environment:
+      - FTPS_USER=${FTPS_USERNAME}
+      - FTPS_PASS=${FTPS_PASSWORD}
+      - FTPS_EXTERNAL_URI=${FTPS_IP}
+  
+  # local-db-handler:
+  #   build:
+  #     context: ./services/database/local
+  #     dockerfile : Dockerfile.local
+    
+  #   restart: on-failure
+    
+  #   environment:
+  #     - MONGO_USERNAME=${MONGO_USERNAME}
+  #     - MONGO_PASSWORD=${MONGO_PASSWORD}
+  
+  # production-db-fllistings:
+  #   build:
+  #     context: ./services/database/production
+  #     dockerfile : Dockerfile.flListings
+    
+  #   restart: on-failure
+
+  #   environment:
+  #     - MONGO_USERNAME=${MONGO_USERNAME}
+  #     - MONGO_PASSWORD=${MONGO_PASSWORD}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 20
+
+  # fllistings-update:
+  #   build:
+  #     context: ./services/database/update/
+  #     dockerfile : Dockerfile.fl_listings
+    
+  #   restart: on-failure
+
+  #   volumes:
+  #     - ./services/libs:/libs
+
+  #   environment:
+  #     - MONGO_USERNAME=${MONGO_USERNAME}
+  #     - MONGO_PASSWORD=${MONGO_PASSWORD}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+  #   deploy:
+  #     mode: replicated
+  #     replicas: 1
+
+  
+  # production-db-aturls:
+  #   build:
+  #     context: ./services/database/production
+  #     dockerfile : Dockerfile.aturls
+    
+  #   restart: on-failure
+
+  #   environment:
+  #     - MONGO_USERNAME=${MONGO_USERNAME}
+  #     - MONGO_PASSWORD=${MONGO_PASSWORD}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+  
+  # production-db-fllistingphotos:
+  #   build:
+  #     context: ./services/database/production
+  #     dockerfile : Dockerfile.flListingPhotos
+    
+  #   restart: on-failure
+
+  #   environment:
+  #     - MONGO_USERNAME=${MONGO_USERNAME}
+  #     - MONGO_PASSWORD=${MONGO_PASSWORD}
+  #     - MYSQL_HOST=${MYSQL_HOST}
+  #     - MYSQL_USERNAME=${MYSQL_USERNAME}
+  #     - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+  #     - MYSQL_DATABASE=${MYSQL_DATABASE}
+  
+
+
+# LISTING - FINDER
+
+# this service is used to check if the listing is present in database or not. there are two version of this service. 
+# one works for normal scraper and another one works for at urls.
+
+  fl-listings-find:
+    build:
+      context: ./services/database/find
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    volumes:
+      - ./services/libs:/libs
+
+  
+  fl-listings-find-at-urls:
+    build:
+      context: ./services/database/find
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - SCRAPER_NAME=.at.urls
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+      - ./services/libs:/libs
+
+# LISTING - FINDER
+
+# LISTING - UPDATE
+
+  fl-listings-update:
+    build:
+      context: ./services/database/update
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    volumes:
+      - ./services/libs:/libs
+
+  
+  fl-listings-update-at-urls:
+    build:
+      context: ./services/database/update
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - SCRAPER_NAME=.at.urls
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+      - ./services/libs:/libs
+
+# LISTING - UPDATE
+
+# AT URLS - UPDATE
+  at-urls-update:
+      build:
+        context: ./services/database/update
+        dockerfile : Dockerfile.at_urls
+      
+      restart: on-failure
+
+      environment:
+        - SCRAPER_NAME=.at.urls
+        - MONGO_USERNAME=${MONGO_USERNAME}
+        - MONGO_PASSWORD=${MONGO_PASSWORD}
+        - MYSQL_HOST=${MYSQL_HOST}
+        - MYSQL_USERNAME=${MYSQL_USERNAME}
+        - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        - MYSQL_DATABASE=${MYSQL_DATABASE}
+      
+      volumes:
+        - ./services/libs:/libs
+
+# AT URLS - UPDATE
+
+# LISTING - INSERT
+
+  fl-listings-insert:
+    build:
+      context: ./services/database/insert
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    volumes:
+      - ./services/libs:/libs
+
+  
+  fl-listings-insert-at-urls:
+    build:
+      context: ./services/database/insert
+      dockerfile : Dockerfile.fl_listings
+    
+    restart: on-failure
+
+    environment:
+      - SCRAPER_NAME=.at.urls
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+      - ./services/libs:/libs
+
+# LISTING - INSERT
+
+# LISTING PHOTOS - INSERT
+
+  fl-listingphotos-insert:
+    build:
+      context: ./services/database/insert
+      dockerfile : Dockerfile.fl_listingphotos
+    
+    restart: on-failure
+
+    environment:
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    volumes:
+      - ./services/libs:/libs
+
+  
+  fl-listingphotos-insert-at-urls:
+    build:
+      context: ./services/database/insert
+      dockerfile : Dockerfile.fl_listingphotos
+    
+    restart: on-failure
+
+    environment:
+      - SCRAPER_NAME=.at.urls
+      - MONGO_USERNAME=${MONGO_USERNAME}
+      - MONGO_PASSWORD=${MONGO_PASSWORD}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+      - ./services/libs:/libs
+
+# LISTING PHOTOS - INSERT
+
+
+
+# LISTING - SCRAPER
+
+# this service will scrape the listing data from target website. 
+# there are two version of this service. one is normal version. 
+# which is based on scrapy. another one is for at urls which is based on normal requests.
+
+
+  listing-scraper:
+      build:
+        context: ./services/scrapers/autotrader
+        dockerfile: Dockerfile.listing
+
+      depends_on:
+        - pulsar
+      
+      environment:
+        - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+        - DATACENTER_PROXY=${DATACENTER_PROXY}
+      
+      stdin_open: true
+
+      volumes:
+        - ./services/libs:/libs
+
+      restart: unless-stopped
+
+  listing-scraper-at-urls:
+      build:
+        context: ./services/scrapers/autotrader
+        dockerfile: Dockerfile.listing
+
+      depends_on:
+        - pulsar
+      
+      environment:
+        - SCRAPER_NAME=.at.urls
+        - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+        - DATACENTER_PROXY=${DATACENTER_PROXY}
+      
+      stdin_open: true
+
+      volumes:
+        - ./services/libs:/libs
+
+      restart: unless-stopped
+
+# LISTING - SCRAPER
+
+# TRANSFORM
+# this service will reformate the scraped raw data for further processing...
+  transform:
+    build: ./services/transform
+
+    restart: on-failure
+
+    volumes:
+        - ./services/libs:/libs
+
+  transform-at-urls:
+    build: ./services/transform
+
+    restart: on-failure
+
+    environment:
+        - SCRAPER_NAME=.at.urls
+
+    volumes:
+        - ./services/libs:/libs
+
+# TRANSFORM
+
+
+# PRE VALIDATION
+# this service will check the conditions , and if any listing is not acording to our pre defined condition then we won't process them further.
+  pre-validation:
+    build: ./services/pre-validation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    restart: on-failure
+    
+    volumes:
+        - ./services/libs:/libs
+
+
+  pre-validation-at-urls:
+    build: ./services/pre-validation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - SCRAPER_NAME=.at.urls
+
+    restart: on-failure
+
+    volumes:
+        - ./services/libs:/libs
+
+# PRE VALIDATION
+
+
+# MAKE MODEL PREDICTION
+
+  makemodel-prediction:
+    build:
+      context: ./services/machine-learning/make-model
+      dockerfile: Dockerfile.makemodel
+    
+    restart: on-failure
+
+    volumes:
+        - ./services/libs:/libs
+
+  makemodel-prediction-at-urls:
+      build:
+        context: ./services/machine-learning/make-model
+        dockerfile: Dockerfile.makemodel
+      
+      restart: on-failure
+
+      environment:
+        - SCRAPER_NAME=.at.urls
+    
+      volumes:
+          - ./services/libs:/libs
+
+# MAKE MODEL PREDICTION
+
+
+# SEAT PREDICTION
+
+  seat-prediction:
+    build:
+      context: ./services/machine-learning/seats
+      dockerfile: Dockerfile.seats
+
+    restart: on-failure
+    
+    volumes:
+          - ./services/libs:/libs
+
+  seat-prediction-at-urls:
+    build:
+      context: ./services/machine-learning/seats
+      dockerfile: Dockerfile.seats
+
+    restart: on-failure
+
+    environment:
+        - SCRAPER_NAME=.at.urls
+    
+    volumes:
+          - ./services/libs:/libs
+
+# SEAT PREDICTION
+
+
+
+# IMAGE PREDICTION
+
+  image-prediction:
+    build:
+      context: ./services/machine-learning/image
+      dockerfile: Dockerfile.image
+
+    restart: on-failure
+
+    volumes:
+      - ./media:/usr/src/app/media
+      - ./services/libs:/libs
+
+    deploy:
+      mode: replicated
+      replicas: 2
+      resources:
+        limits:
+          cpus: '5'
+    
+    environment:
+      - DATACENTER_PROXY=${DATACENTER_PROXY}
+  
+  image-prediction-at-urls:
+    build:
+      context: ./services/machine-learning/image
+      dockerfile: Dockerfile.image
+
+    restart: on-failure
+
+    volumes:
+      - ./media:/usr/src/app/media
+      - ./services/libs:/libs
+
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: '5'
+    
+    environment:
+      - DATACENTER_PROXY=${DATACENTER_PROXY}
+      - SCRAPER_NAME=.at.urls
+
+
+# IMAGE PREDICTION
+
+
+# POST VALIDATION
+  post-validation:
+    build: ./services/post-validation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    restart: on-failure
+
+    volumes:
+      - ./services/libs:/libs
+
+  
+  post-validation-at-urls:
+    build: ./services/post-validation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - SCRAPER_NAME=.at.urls
+
+    restart: on-failure
+
+    volumes:
+      - ./services/libs:/libs
+# POST VALIDATION
+
+
+# NUMBERPLATE PREDICTION
+
+  numberplate-prediction:
+      build:
+        context: ./services/machine-learning/numberplate-prediction
+        dockerfile: Dockerfile.image
+
+      volumes:
+        - ./media:/usr/src/app/media
+        - ./services/libs:/libs
+      
+      environment:
+        PLATE_RECOGNIZER_TOKEN : ${PLATE_RECOGNIZER_TOKEN}
+      
+      deploy:
+        mode: replicated
+        replicas: 2
+        resources:
+          limits:
+            cpus: '5'
+
+  numberplate-prediction-at-urls:
+
+      build:
+        context: ./services/machine-learning/numberplate-prediction
+        dockerfile: Dockerfile.image
+
+      volumes:
+        - ./media:/usr/src/app/media
+        - ./services/libs:/libs
+      
+      environment:
+        - PLATE_RECOGNIZER_TOKEN=${PLATE_RECOGNIZER_TOKEN}
+        - SCRAPER_NAME=.at.urls
+      
+      deploy:
+        mode: replicated
+        replicas: 1
+        resources:
+          limits:
+            cpus: '5'
+
+
+# NUMBERPLATE PREDICTION
+
+
+# POST CALCULATIONS
+
+  post-calculation:
+    build: ./services/postCalculation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+
+    restart: on-failure
+
+    volumes:
+        - ./services/libs:/libs
+
+  post-calculation-at-urls:
+    build: ./services/postCalculation
+
+    environment:
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - SCRAPER_NAME=.at.urls
+
+    restart: on-failure
+
+    volumes:
+        - ./services/libs:/libs
+
+# POST CALCULATIONS
+
+# IMAGE - GENERATION
+
+  image-generation:
+      build: 
+        context: ./services/imageGenerator
+        dockerfile: Dockerfile.image
+
+      restart: on-failure
+      
+      environment:
+        - PRODUCTION_SERVER_FTP_USERNAME=${PRODUCTION_SERVER_FTP_USERNAME}
+        - PRODUCTION_SERVER_FTP_PASSWORD=${PRODUCTION_SERVER_FTP_PASSWORD}
+        - PRODUCTION_SERVER_IMAGE_DIR_PREFIX=${PRODUCTION_SERVER_IMAGE_DIR_PREFIX}
+        - PRODUCTION_SERVER_FTP_PORT=${PRODUCTION_SERVER_FTP_PORT}
+        - PRODUCTION_SERVER_IP_ADDRESS=${PRODUCTION_SERVER_IP_ADDRESS}
+      
+      volumes:
+        - ./media:/usr/src/app/media
+        - ./services/libs:/libs
+      
+      stdin_open: true
+      tty: true
+
+      deploy:
+        mode: replicated
+        replicas: 1
+        resources:
+          limits:
+            cpus: '2'
+
+  image-generation-at-urls:
+      build: 
+        context: ./services/imageGenerator
+        dockerfile: Dockerfile.image
+
+      restart: on-failure
+      
+      environment:
+        - PRODUCTION_SERVER_FTP_USERNAME=${PRODUCTION_SERVER_FTP_USERNAME}
+        - PRODUCTION_SERVER_FTP_PASSWORD=${PRODUCTION_SERVER_FTP_PASSWORD}
+        - PRODUCTION_SERVER_IMAGE_DIR_PREFIX=${PRODUCTION_SERVER_IMAGE_DIR_PREFIX}
+        - PRODUCTION_SERVER_FTP_PORT=${PRODUCTION_SERVER_FTP_PORT}
+        - PRODUCTION_SERVER_IP_ADDRESS=${PRODUCTION_SERVER_IP_ADDRESS}
+        - SCRAPER_NAME=.at.urls
+      
+      volumes:
+        - ./media:/usr/src/app/media
+        - ./services/libs:/libs
+      
+      stdin_open: true
+      tty: true
+
+      deploy:
+        mode: replicated
+        replicas: 1
+        resources:
+          limits:
+            cpus: '2'
+
+# IMAGE - GENERATION
+
+# AT - URL - SCRAPER - INIT
+
+  at-urls-scraper:
+    build:
+      context: ./services/scrapers/autotrader
+      dockerfile: Dockerfile.url
+
+    depends_on:
+      - pulsar
+    
+    environment:
+      - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - SCRAPER_NAME=.at.urls
+    
+    volumes:
+        - ./services/libs:/libs
+
+    stdin_open: true
+
+# AT - URL - SCRAPER - INIT
+
+
+# DEALER SCRAPY LISTING VALIDATOR
+  dealer-scrapy-listing-validator:
+    build:
+      context: ./services/scrapers/autotrader/spiders
+      dockerfile: Dockerfile.dealer.validator
+
+    depends_on:
+      - pulsar
+    
+    environment:
+      - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+        - ./services/libs:/libs
+    
+    stdin_open: true
+
+
+# DEALER SCRAPY LISTING VALIDATOR
+
+
+# INIT VALIDATOR
+
+  init-listing-validator:
+    build:
+      context: ./services/scrapers/autotrader
+      dockerfile: Dockerfile.validator
+
+    depends_on:
+      - pulsar
+    
+    environment:
+      - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+      - MYSQL_HOST=${MYSQL_HOST}
+      - MYSQL_USERNAME=${MYSQL_USERNAME}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+    
+    volumes:
+        - ./services/libs:/libs
+    
+    stdin_open: true
+
+# INIT VALIDATOR
+
+
+# resource manager
+
+  resource-manager:
+      build:
+        context: ./services/resource_manager
+        dockerfile: Dockerfile.resource_manager
+
+      environment:
+        - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+        - MYSQL_HOST=${MYSQL_HOST}
+        - MYSQL_USERNAME=${MYSQL_USERNAME}
+        - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        - MYSQL_DATABASE=${MYSQL_DATABASE}
+      
+      volumes:
+          - ./services/libs:/libs
+          - /var/www/html/files:/var/www/html/files
+      
+      stdin_open: true
+      network_mode: host
+      # networks:
+      #   - host
+  # resource manager
+
+  # resource manager
+
+  blacklisted-dealers:
+      build:
+        context: ./services/blacklisted_dealers
+        dockerfile: Dockerfile.blacklisted_dealers
+
+      environment:
+        - RESIDENTIAL_PROXY=${RESIDENTIAL_PROXY}
+        - MYSQL_HOST=${MYSQL_HOST}
+        - MYSQL_USERNAME=${MYSQL_USERNAME}
+        - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+        - MYSQL_DATABASE=${MYSQL_DATABASE}
+      
+      volumes:
+          - ./services/libs:/libs
+      
+      stdin_open: true
+      network_mode: host
+      # networks:
+      #   - host
+  # resource manager
+
+
+  # notebook
+
+  notebook:
+     
+      image: jupyter/base-notebook:latest
+      
+      volumes:
+          - ./services/notebook:/home/jovyan/work
+        
+      ports:
+        - 20220:8888
+
+      stdin_open: true
+
+  # notebook

@@ -1,0 +1,5 @@
+/scrapers/dockerServices/.env
+/__pycache__/
+/scrapers/dockerServices/pulsar/pulsardata
+/scrapers/dockerServices/mongodb/database
+/env
